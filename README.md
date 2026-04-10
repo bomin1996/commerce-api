@@ -9,11 +9,20 @@
 Client
   │
   ▼
-┌──────────┐    ┌───────────┐    ┌───────────┐
-│  Express │───▶│   Redis   │───▶│   MySQL   │
-│  Server  │    │ (Cache +  │    │  (Main)   │
-│          │    │  D-Lock)  │    │           │
-└──────────┘    └───────────┘    └───────────┘
+┌──────────────────────────────────────────────┐
+│  Express Server                              │
+│  ├─ Rate Limiter (100 req/min)               │
+│  ├─ Validation Middleware                    │
+│  ├─ Controllers                              │
+│  ├─ Services (Business Logic)                │
+│  └─ Global Error Handler                     │
+└──────┬───────────────────┬───────────────────┘
+       │                   │
+┌──────▼──────┐     ┌──────▼──────┐
+│    Redis    │     │    MySQL    │
+│  (Cache +   │     │   (Main)   │
+│  D-Lock)    │     │            │
+└─────────────┘     └────────────┘
 ```
 
 ## 핵심 설계
@@ -53,31 +62,55 @@ Client
 - 주문 취소: 주문 상태 변경 + 재고 복구를 하나의 트랜잭션으로
 - 결제: 결제 기록 + 주문 상태 변경을 하나의 트랜잭션으로
 
+### 4. 에러 처리 체계
+
+```
+AppError (base)
+├── BadRequestError  (400)  — 입력 검증 실패
+├── NotFoundError    (404)  — 리소스 없음
+└── ConflictError    (409)  — 재고 부족, 동시성 충돌, 중복 결제
+```
+
+- 검증 미들웨어가 컨트롤러 진입 전 요청을 검증
+- 서비스 레이어에서 비즈니스 에러를 커스텀 에러로 throw
+- 글로벌 에러 핸들러가 일관된 JSON 응답으로 변환
+
 ## Tech Stack
 
 | 구분 | 기술 |
 |------|------|
 | Runtime | Node.js 18 |
-| Language | TypeScript |
-| Framework | Express |
+| Language | TypeScript (strict mode) |
+| Framework | Express 5 |
 | Database | MySQL 8.0 |
-| Cache / Lock | Redis |
+| Cache / Lock | Redis 7 |
 | API Docs | Swagger (OpenAPI 3.0) |
-| Test | Jest + Supertest |
+| Test | Jest + Supertest (통합 + 단위) |
 | CI | GitHub Actions |
 | Container | Docker, Docker Compose |
 
 ## API
+
+### Health
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health` | 헬스 체크 (API, MySQL, Redis 상태) |
 
 ### Products
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/products` | 상품 등록 |
-| GET | `/api/products` | 상품 목록 (페이지네이션) |
-| GET | `/api/products/:id` | 상품 상세 |
+| GET | `/api/products` | 상품 목록 (페이지네이션, 검색, 가격 필터) |
+| GET | `/api/products/:id` | 상품 상세 (Redis 캐싱) |
 | PATCH | `/api/products/:id` | 상품 수정 |
 | DELETE | `/api/products/:id` | 상품 삭제 |
+
+**검색 파라미터:**
+```
+GET /api/products?keyword=나이키&minPrice=100000&maxPrice=200000&page=1&limit=10
+```
 
 ### Orders
 
@@ -117,7 +150,10 @@ npm run dev
 # 전체 테스트
 npm test
 
-# 통합 테스트만
+# 단위 테스트
+npm run test:unit
+
+# 통합 테스트
 npm run test:integration
 ```
 
@@ -125,27 +161,37 @@ npm run test:integration
 
 ```
 src/
-├── app.ts                    # Express 앱
+├── app.ts                    # Express 앱 + 미들웨어 구성
 ├── server.ts                 # 진입점
 ├── config/
 │   ├── database.ts           # MySQL 연결 + 스키마
 │   ├── redis.ts              # Redis 연결
+│   ├── logger.ts             # 로깅 시스템
 │   └── swagger.ts            # Swagger 설정
+├── errors/
+│   └── AppError.ts           # 커스텀 에러 클래스
 ├── controllers/
 │   ├── product.controller.ts
 │   ├── order.controller.ts
 │   └── payment.controller.ts
 ├── services/
-│   ├── product.service.ts    # 상품 CRUD + 캐싱
+│   ├── product.service.ts    # 상품 CRUD + 캐싱 + 검색
 │   ├── order.service.ts      # 주문 + 낙관적 락
 │   └── payment.service.ts    # 결제 + 멱등성
 ├── middleware/
+│   ├── errorHandler.ts       # 글로벌 에러 핸들러
+│   ├── validate.ts           # 요청 검증 미들웨어
 │   └── rateLimiter.ts        # Rate Limiting
 └── routes/
+    ├── health.route.ts       # 헬스 체크
     ├── product.route.ts      # Swagger 문서 포함
     ├── order.route.ts
     └── payment.route.ts
 tests/
+├── unit/
+│   ├── appError.test.ts      # 에러 클래스 테스트
+│   ├── errorHandler.test.ts  # 에러 핸들러 테스트
+│   └── validate.test.ts      # 검증 미들웨어 테스트
 └── integration/
     ├── product.test.ts
     ├── order.test.ts
