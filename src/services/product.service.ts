@@ -47,12 +47,39 @@ export async function getProductById(id: number): Promise<ProductRow | null> {
   return rows[0];
 }
 
-export async function getProducts(page: number = 1, limit: number = 20): Promise<{ products: ProductRow[]; total: number }> {
+interface ProductSearchParams {
+  page?: number;
+  limit?: number;
+  keyword?: string;
+  minPrice?: number;
+  maxPrice?: number;
+}
+
+export async function getProducts(params: ProductSearchParams = {}): Promise<{ products: ProductRow[]; total: number }> {
+  const { page = 1, limit = 20, keyword, minPrice, maxPrice } = params;
   const offset = (page - 1) * limit;
 
+  const conditions: string[] = [];
+  const values: any[] = [];
+
+  if (keyword) {
+    conditions.push('name LIKE ?');
+    values.push(`%${keyword}%`);
+  }
+  if (minPrice !== undefined) {
+    conditions.push('price >= ?');
+    values.push(minPrice);
+  }
+  if (maxPrice !== undefined) {
+    conditions.push('price <= ?');
+    values.push(maxPrice);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
   const [[countResult], [rows]] = await Promise.all([
-    pool.query<RowDataPacket[]>('SELECT COUNT(*) as total FROM products'),
-    pool.query<ProductRow[]>('SELECT * FROM products ORDER BY created_at DESC LIMIT ? OFFSET ?', [limit, offset]),
+    pool.query<RowDataPacket[]>(`SELECT COUNT(*) as total FROM products ${where}`, values),
+    pool.query<ProductRow[]>(`SELECT * FROM products ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...values, limit, offset]),
   ]);
 
   return {
