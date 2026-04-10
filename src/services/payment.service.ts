@@ -1,6 +1,7 @@
 import pool from '../config/database';
 import redis from '../config/redis';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
+import { NotFoundError, ConflictError } from '../errors/AppError';
 
 interface PaymentRow extends RowDataPacket {
   id: number;
@@ -45,7 +46,7 @@ export async function processPayment(orderNumber: string, idempotencyKey: string
   const locked = await redis.set(lockKey, '1', 'EX', 30, 'NX');
 
   if (!locked) {
-    throw new Error('PAYMENT_IN_PROGRESS');
+    throw new ConflictError('Payment is already being processed', 'PAYMENT_IN_PROGRESS');
   }
 
   const connection = await pool.getConnection();
@@ -60,14 +61,14 @@ export async function processPayment(orderNumber: string, idempotencyKey: string
 
     if (orders.length === 0) {
       await connection.rollback();
-      throw new Error('ORDER_NOT_FOUND');
+      throw new NotFoundError('Order not found');
     }
 
     const order = orders[0];
 
     if (order.status !== 'PENDING') {
       await connection.rollback();
-      throw new Error('ORDER_NOT_PAYABLE');
+      throw new ConflictError('Order is not payable (already paid or cancelled)', 'ORDER_NOT_PAYABLE');
     }
 
     // 4. 결제 기록 생성

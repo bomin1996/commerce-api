@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { create, getByNumber, cancel } from '../controllers/order.controller';
+import { validate, orderCreateRules } from '../middleware/validate';
 
 const router = Router();
 
@@ -32,7 +33,7 @@ const router = Router();
  *       409:
  *         description: 재고 부족 또는 동시성 충돌
  */
-router.post('/api/orders', create);
+router.post('/api/orders', validate(orderCreateRules), create);
 
 /**
  * @swagger

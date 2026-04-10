@@ -2,6 +2,7 @@ import pool from '../config/database';
 import redis from '../config/redis';
 import { v4 as uuidv4 } from 'uuid';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
+import { NotFoundError, ConflictError } from '../errors/AppError';
 
 interface OrderRow extends RowDataPacket {
   id: number;
@@ -45,14 +46,14 @@ export async function createOrder(productId: number, quantity: number): Promise<
 
       if (products.length === 0) {
         await connection.rollback();
-        throw new Error('PRODUCT_NOT_FOUND');
+        throw new NotFoundError('Product not found');
       }
 
       const product = products[0];
 
       if (product.stock < quantity) {
         await connection.rollback();
-        throw new Error('INSUFFICIENT_STOCK');
+        throw new ConflictError('Insufficient stock', 'INSUFFICIENT_STOCK');
       }
 
       // 2. 낙관적 락으로 재고 차감 (version이 변경되지 않았을 때만 성공)
@@ -95,7 +96,7 @@ export async function createOrder(productId: number, quantity: number): Promise<
     }
   }
 
-  throw new Error('CONCURRENT_UPDATE_FAILED');
+  throw new ConflictError('Too many concurrent requests. Please retry.', 'CONCURRENT_UPDATE_FAILED');
 }
 
 export async function getOrderByNumber(orderNumber: string): Promise<OrderRow | null> {

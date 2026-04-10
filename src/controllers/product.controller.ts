@@ -1,85 +1,52 @@
 import { Request, Response } from 'express';
 import { createProduct, getProductById, getProducts, updateProduct, deleteProduct } from '../services/product.service';
+import { NotFoundError } from '../errors/AppError';
 
 export async function create(req: Request, res: Response): Promise<void> {
   const { name, description, price, stock } = req.body;
-
-  if (!name || price === undefined || stock === undefined) {
-    res.status(400).json({ error: 'name, price, stock are required' });
-    return;
-  }
-
-  if (price < 0 || stock < 0) {
-    res.status(400).json({ error: 'price and stock must be non-negative' });
-    return;
-  }
-
-  try {
-    const product = await createProduct({ name, description, price, stock });
-    res.status(201).json(product);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to create product' });
-  }
+  const product = await createProduct({ name, description, price, stock });
+  res.status(201).json(product);
 }
 
 export async function getById(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
+  const product = await getProductById(id);
 
-  try {
-    const product = await getProductById(id);
-    if (!product) {
-      res.status(404).json({ error: 'Product not found' });
-      return;
-    }
-    res.json(product);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to get product' });
-  }
+  if (!product) throw new NotFoundError('Product not found');
+
+  res.json(product);
 }
 
 export async function getAll(req: Request, res: Response): Promise<void> {
   const page = Number(req.query.page) || 1;
   const limit = Number(req.query.limit) || 20;
+  const keyword = req.query.keyword as string | undefined;
+  const minPrice = req.query.minPrice ? Number(req.query.minPrice) : undefined;
+  const maxPrice = req.query.maxPrice ? Number(req.query.maxPrice) : undefined;
 
-  try {
-    const result = await getProducts(page, limit);
-    res.json({
-      ...result,
-      page,
-      limit,
-      totalPages: Math.ceil(result.total / limit),
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to get products' });
-  }
+  const result = await getProducts({ page, limit, keyword, minPrice, maxPrice });
+  res.json({
+    ...result,
+    page,
+    limit,
+    totalPages: Math.ceil(result.total / limit),
+  });
 }
 
 export async function update(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
+  const product = await updateProduct(id, req.body);
 
-  try {
-    const product = await updateProduct(id, req.body);
-    if (!product) {
-      res.status(404).json({ error: 'Product not found' });
-      return;
-    }
-    res.json(product);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update product' });
-  }
+  if (!product) throw new NotFoundError('Product not found');
+
+  res.json(product);
 }
 
 export async function remove(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
+  const deleted = await deleteProduct(id);
 
-  try {
-    const deleted = await deleteProduct(id);
-    if (!deleted) {
-      res.status(404).json({ error: 'Product not found' });
-      return;
-    }
-    res.status(204).send();
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to delete product' });
-  }
+  if (!deleted) throw new NotFoundError('Product not found');
+
+  res.status(204).send();
 }

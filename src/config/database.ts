@@ -58,7 +58,7 @@ export async function initDatabase(): Promise<void> {
       )
     `);
 
-    console.log('Database initialized');
+    // Database initialized
   } finally {
     connection.release();
   }

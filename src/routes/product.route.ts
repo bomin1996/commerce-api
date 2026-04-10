@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { create, getById, getAll, update, remove } from '../controllers/product.controller';
+import { validate, productCreateRules } from '../middleware/validate';
 
 const router = Router();
 
@@ -35,7 +36,7 @@ const router = Router();
  *       400:
  *         description: 잘못된 요청
  */
-router.post('/api/products', create);
+router.post('/api/products', validate(productCreateRules), create);
 
 /**
  * @swagger
@@ -54,6 +55,21 @@ router.post('/api/products', create);
  *         schema:
  *           type: integer
  *           default: 20
+ *       - in: query
+ *         name: keyword
+ *         schema:
+ *           type: string
+ *         description: 상품명 검색 키워드
+ *       - in: query
+ *         name: minPrice
+ *         schema:
+ *           type: number
+ *         description: 최소 가격
+ *       - in: query
+ *         name: maxPrice
+ *         schema:
+ *           type: number
+ *         description: 최대 가격
  *     responses:
  *       200:
  *         description: 상품 목록

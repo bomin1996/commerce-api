@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { pay } from '../controllers/payment.controller';
+import { validate, paymentCreateRules } from '../middleware/validate';
 
 const router = Router();
 
@@ -34,6 +35,6 @@ const router = Router();
  *       409:
  *         description: 결제 불가 상태 (이미 결제/취소됨)
  */
-router.post('/api/payments', pay);
+router.post('/api/payments', validate(paymentCreateRules), pay);
 
 export default router;
